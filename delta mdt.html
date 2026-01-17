@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>DELTA - FULL MDT OVERRIDE v5.5</title>
+    <style>
+        * { box-sizing: border-box; font-family: 'Courier New', monospace; }
+        body { margin: 0; background: #0a0a0a; color: #dcdcdc; overflow: hidden; height: 100vh; transition: background 0.5s; }
+
+        #topbar { height: 60px; background: #111; border-bottom: 2px solid #444; display: flex; align-items: center; padding: 0 25px; }
+        .header-restricted { color: #f44; font-weight: bold; margin-right: 15px; }
+        .header-site { color: #888; padding-left: 0; }
+        .header-user-info { margin-left: auto; font-size: 13px; color: #bbb; background: #1a1a1a; padding: 5px 15px; border: 1px solid #333; }
+
+        #sidebar { position: absolute; top: 60px; left: 0; width: 220px; height: calc(100vh - 60px); background: #111; border-right: 2px solid #333; padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+        .sidebar-btn { padding: 12px; border: 1px solid #444; background: #1a1a1a; color: #bbb; font-size: 11px; cursor: pointer; text-align: left; text-transform: uppercase; }
+        .sidebar-btn:hover { background: #333; color: #fff; }
+        .admin-only { display: none; border-color: #600 !important; color: #f44 !important; }
+
+        .window { position: absolute; background: #0f0f0f; border: 1px solid #333; display: none; flex-direction: column; width: 850px; height: 600px; z-index: 10; box-shadow: 0 10px 40px rgba(0,0,0,0.9); }
+        .titlebar { background: #222; padding: 10px 15px; font-size: 13px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; cursor: move; color: #fff; }
+        .titlebar button { background: #400; border: none; color: #fff; cursor: pointer; padding: 4px 10px; }
+        .content { padding: 20px; font-size: 14px; overflow-y: auto; flex: 1; }
+
+        /* Styles spécifiques Terminal */
+        #win-terminal .content { background: #000 !important; padding: 0 !important; display: flex; flex-direction: column; }
+        #term-log { flex: 1; padding: 20px; overflow-y: auto; font-size: 14px; line-height: 1.4; color: #0f0; }
+        .term-input-line { display: flex; padding: 15px 20px; background: #000; border-top: 1px solid #222; }
+        #term-in { background: transparent; border: none; color: #0f0; flex: 1; outline: none; font-size: 16px; font-family: inherit; }
+
+        /* Layout Reports & Chat */
+        .report-paper { background: #fff; color: #000; padding: 40px; min-height: 100%; font-family: 'Times New Roman', serif; }
+        .report-img { max-width: 300px; float: right; border: 2px solid #000; margin-left: 20px; margin-bottom: 20px; }
+        .chat-container { display: flex; height: 100%; padding: 0; background: #0a0a0a; }
+        #chan-list { width: 200px; border-right: 1px solid #333; padding: 15px; overflow-y: auto; background: #0d0d0d; }
+        #chat-main { flex: 1; display: flex; flex-direction: column; padding: 15px; }
+        .chat-log { flex: 1; background: #000; border: 1px solid #222; padding: 10px; overflow-y: auto; margin-bottom: 10px; font-size: 13px; }
+
+        .input-scp { background: #111; border: 1px solid #444; color: #fff; padding: 10px; width: 100%; margin-bottom: 10px; outline: none; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; border-bottom: 2px solid #444; padding: 10px; color: #f44; }
+        td { padding: 10px; border-bottom: 1px solid #222; }
+        .action-btn { cursor: pointer; padding: 4px 8px; background: #222; border: 1px solid #444; color: #fff; margin-right: 5px; }
+
+        #login-overlay { position: fixed; inset: 0; background: #050505; display: flex; align-items: center; justify-content: center; z-index: 10000; }
+        #sync-led { width: 8px; height: 8px; border-radius: 50%; background: #0f0; margin-left: 10px; display: inline-block; opacity: 0.3; transition: 0.2s; }
+        
+        .pre-text { white-space: pre-wrap; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div style="border: 1px solid #333; padding: 40px; width: 450px; background: #0a0a0a; text-align: center;">
+        <h2 style="letter-spacing: 5px; color: #fff; margin-bottom:20px;">DELTA SYSTEM</h2>
+        <input type="text" id="user-id" class="input-scp" style="text-align:center" placeholder="ID PERSONNEL">
+        <input type="password" id="user-pass" class="input-scp" style="text-align:center" placeholder="CLÉ DE SÉCURITÉ">
+        <button class="sidebar-btn" style="width:100%;" onclick="checkLogin()">AUTHENTIFICATION</button>
+        <div id="login-msg" style="color:#f44; margin-top:10px;"></div>
+    </div>
+</div>
+
+<div id="topbar">
+    <span class="header-restricted">[RESTRICTED]</span>
+    <span class="header-site">DELTA NET</span>
+    <div id="sync-led" title="Sync Status"></div>
+    <div class="header-user-info">AGENT: <span id="display-id">____</span> | CLEARANCE: <span id="display-lvl">____</span></div>
+</div>
+
+<div id="sidebar">
+    <div class="sidebar-btn" data-open="profile">Dossier Personnel</div>
+    <div class="sidebar-btn" data-open="documents">Archives DELTA</div>
+    <div class="sidebar-btn" data-open="map" style="color: #ffaa00; border-color: #ffaa0044;">🛰️ Cartographie</div>
+    <div class="sidebar-btn" data-open="creator" style="color: #0f0; border-color: #0f04;">Créer un Rapport</div>
+    <div class="sidebar-btn" data-open="comms">Communications</div>
+    <div class="sidebar-btn" data-open="terminal">Terminal</div>
+    <div class="sidebar-btn admin-only" data-open="admin-agents">Administration</div>
+    <div class="sidebar-btn admin-only" data-open="spy" style="color:#f44; border-color:#600;">Surveillance Comms</div>
+    <div class="sidebar-btn" onclick="syncCloud(false)" style="margin-top:auto; color:cyan;">Sync Force</div>
+    <div class="sidebar-btn" onclick="location.reload()" style="color:#f44;">Déconnexion</div>
+</div>
+
+<div id="win-map" class="window" style="width:1050px; height:750px; border: 1px solid #ffaa00; background: #000; font-family: 'Segoe UI', sans-serif; position: relative; overflow: hidden; box-shadow: 0 0 20px #000;">
+    <div class="titlebar" style="background: #1a1a1a; color: #ffaa00; padding: 12px; display: flex; justify-content: space-between; border-bottom: 2px solid #ffaa00; user-select: none; z-index: 100;">
+        <span style="letter-spacing: 1px; font-weight: bold;">SATELLITE INTELLIGENCE UNIT - LOS SANTOS</span>
+        <button data-close="win-map" style="background:none; border:none; color:#ffaa00; cursor:pointer; font-weight:bold;">X</button>
+    </div>
+    
+    <div class="toolbar" style="background: rgba(17, 17, 17, 0.9); padding: 10px; border-bottom: 1px solid #333; display: flex; gap: 15px; align-items: center; color: white; font-size: 13px; z-index: 100; position: relative;">
+        <span style="color: #ffaa00; font-weight: bold;">OUTILS :</span>
+        <label style="cursor:pointer;"><input type="radio" name="tool" value="dot" checked> 🔴 Point</label>
+        <label style="cursor:pointer;"><input type="radio" name="tool" value="target"> 🎯 Cible</label>
+        <div style="display: flex; align-items: center; gap: 8px; border-left: 1px solid #444; padding-left: 15px;">
+            <label style="cursor:pointer;"><input type="radio" name="tool" value="custom"> 🔗 URL :</label>
+            <input type="text" id="custom-url" placeholder="Lien image..." style="background: #222; border: 1px solid #ffaa00; color: white; padding: 4px; font-size: 11px; width: 180px; outline: none;">
+        </div>
+        <button onclick="resetView()" style="background:#222; color:#ffaa00; border:1px solid #ffaa00; padding:4px 10px; cursor:pointer; font-size:11px; margin-left: auto; border-radius: 3px;">REMPLIR / RECENTRER</button>
+        <button onclick="clearMarkers()" style="background:#440000; color:white; border:1px solid red; padding:4px 10px; cursor:pointer; font-size:11px; border-radius: 3px;">RESET MARQUEURS</button>
+    </div>
+
+    <div id="map-wrapper" style="width:100%; height: calc(100% - 95px); overflow:hidden; position:relative; cursor:grab; background: #000;">
+        <div id="map-container" style="position:absolute; top:0; left:0; transform-origin: 0 0; will-change: transform;">
+            <img src="mapgta.jpg" id="gta-map" style="display:block; pointer-events: none; user-select: none;">
+        </div>
+        <div style="position:absolute; bottom:15px; left:15px; background:rgba(0,0,0,0.8); padding:10px; font-size:10px; color:#ffaa00; border:1px solid #ffaa00; pointer-events:none; z-index:2000; border-radius: 4px;">
+            DÉPLACER : Clic Gauche | ZOOM : Molette | POSER : Clic Droit
+        </div>
+    </div>
+</div>
+
+<div id="win-profile" class="window"><div class="titlebar"><span>FICHIER PERSONNEL</span><button data-close="win-profile">X</button></div><div class="content" id="prof-data"></div></div>
+<div id="win-documents" class="window" style="width:900px;"><div class="titlebar"><span>ARCHIVES SÉCURISÉES</span><button data-close="win-documents">X</button></div><div class="content" id="archive-list"></div></div>
+<div id="win-view-report" class="window" style="width:850px; height:90vh;"><div class="titlebar"><span>LECTURE RAPPORT</span><button data-close="win-view-report">X</button></div><div class="content" id="report-viewer" style="background:#222;"></div></div>
+
+<div id="win-creator" class="window">
+    <div class="titlebar"><span id="creator-title">ÉDITEUR DE CONTENU</span><button data-close="win-creator">X</button></div>
+    <div class="content">
+        <input id="c-item" class="input-scp" placeholder="DOSSIER-XXX">
+        <input id="c-class" class="input-scp" placeholder="CLASSE">
+        <input id="c-lvl" type="number" class="input-scp" placeholder="NIVEAU ACCRÉDITATION">
+        <input id="c-img" class="input-scp" placeholder="URL IMAGE (Optionnel)">
+        <textarea id="c-proc" class="input-scp" style="height:80px;" placeholder="PROCÉDURES"></textarea>
+        <textarea id="c-desc" class="input-scp" style="height:120px;" placeholder="DESCRIPTION"></textarea>
+        <button class="sidebar-btn" style="width:100%;" onclick="saveReport()">PUBLIER SUR LE RÉSEAU</button>
+    </div>
+</div>
+
+<div id="win-comms" class="window">
+    <div class="titlebar"><span>SYSTÈME DE MESSAGERIE</span><button data-close="win-comms">X</button></div>
+    <div class="content chat-container">
+        <div id="chan-list"></div>
+        <div id="chat-main">
+            <div id="chat-title" style="color:#f44; font-weight:bold; margin-bottom:5px;">CANAL: SITE-GÉNÉRAL</div>
+            <div id="chat-log" class="chat-log"></div>
+            <div style="display:flex; gap:10px;"><input id="chat-in" class="input-scp" placeholder="Écrire un message..."><button class="sidebar-btn" onclick="sendMsg()">ENVOYER</button></div>
+        </div>
+    </div>
+</div>
+
+<div id="win-terminal" class="window">
+    <div class="titlebar"><span>TERMINAL</span><button id="term-close-btn" data-close="win-terminal">X</button></div>
+    <div class="content">
+        <div id="term-log">
+            <div style="color:#888;">TERMINAL v5.0.1 (LOCAL)</div><br>
+            <div>Tapez <span style="color:white; font-weight:bold;">'help'</span>.</div>
+        </div>
+        <div class="term-input-line">
+            <span id="term-prompt" style="color:#0f0">root@delta:~#&nbsp;</span>
+            <input id="term-in" autocomplete="off">
+        </div>
+    </div>
+</div>
+
+<div id="win-admin-agents" class="window" style="width:900px;">
+    <div class="titlebar"><span>O5 - GESTION DU PERSONNEL</span><button data-close="win-admin-agents">X</button></div>
+    <div class="content">
+        <div id="admin-form" style="background:#111; padding:15px; border:1px solid #444; margin-bottom:15px; display:flex; gap:10px;">
+            <input id="adm-id" class="input-scp" placeholder="ID">
+            <input id="adm-pass" class="input-scp" placeholder="CLÉ">
+            <input id="adm-name" class="input-scp" placeholder="NOM COMPLET">
+            <select id="adm-lvl" class="input-scp"><option value="1">L1</option><option value="2">L2</option><option value="3">L3</option><option value="4">L4</option><option value="5">L5</option></select>
+            <button onclick="adminSave()" class="sidebar-btn" id="adm-btn">VALIDER</button>
+            <button onclick="resetAdminForm()" class="sidebar-btn" id="adm-cancel" style="display:none;">ANNULER</button>
+        </div>
+        <table id="agent-table"></table>
+    </div>
+</div>
+
+<div id="win-spy" class="window"><div class="titlebar"><span>INTERCEPTION O5</span><button data-close="win-spy">X</button></div><div class="content" id="spy-log" style="background:#000; color:#f44; font-size:12px; line-height:1.5;"></div></div>
+
+<script>
+// --- LOGIQUE DE LA CARTE AVANCÉE ---
+const wrapper = document.getElementById('map-wrapper');
+const container = document.getElementById('map-container');
+const mapImg = document.getElementById('gta-map');
+const customInput = document.getElementById('custom-url');
+
+let isDragging = false, startX, startY, currentX = 0, currentY = 0, scale = 1;
+
+mapImg.onload = resetView;
+
+function clampBoundaries() {
+    const wWidth = wrapper.offsetWidth, wHeight = wrapper.offsetHeight;
+    const contentWidth = mapImg.offsetWidth * scale, contentHeight = mapImg.offsetHeight * scale;
+    if (contentWidth > wWidth) currentX = Math.min(0, Math.max(currentX, wWidth - contentWidth));
+    else currentX = (wWidth - contentWidth) / 2;
+    if (contentHeight > wHeight) currentY = Math.min(0, Math.max(currentY, wHeight - contentHeight));
+    else currentY = (wHeight - contentHeight) / 2;
+}
+
+wrapper.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    isDragging = true; wrapper.style.cursor = 'grabbing';
+    startX = e.clientX - currentX; startY = e.clientY - currentY;
+});
+
+window.addEventListener('mouseup', () => { isDragging = false; wrapper.style.cursor = 'grab'; });
+
+window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    currentX = e.clientX - startX; currentY = e.clientY - startY;
+    clampBoundaries(); updateTransform();
+});
+
+wrapper.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomFactor = 0.25, oldScale = scale;
+    if (e.deltaY < 0) scale *= (1 + zoomFactor);
+    else scale /= (1 + zoomFactor);
+    const minScale = Math.max(wrapper.offsetWidth / mapImg.naturalWidth, wrapper.offsetHeight / mapImg.naturalHeight);
+    scale = Math.min(Math.max(minScale, scale), 15);
+    const rect = wrapper.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+    currentX = mouseX - (mouseX - currentX) * (scale / oldScale);
+    currentY = mouseY - (mouseY - currentY) * (scale / oldScale);
+    clampBoundaries(); updateTransform();
+}, { passive: false });
+
+function updateTransform() {
+    container.style.transform = `translate(${currentX}px, ${currentY}px) scale(${scale})`;
+}
+
+function resetView() {
+    scale = Math.max(wrapper.offsetWidth / mapImg.naturalWidth, wrapper.offsetHeight / mapImg.naturalHeight);
+    currentX = (wrapper.offsetWidth - mapImg.naturalWidth * scale) / 2;
+    currentY = (wrapper.offsetHeight - mapImg.naturalHeight * scale) / 2;
+    updateTransform();
+}
+
+wrapper.oncontextmenu = function(e) {
+    e.preventDefault();
+    const rect = container.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / scale;
+    const y = (e.clientY - rect.top) / scale;
+    const tool = document.querySelector('input[name="tool"]:checked').value;
+    createMarker(x, y, tool, customInput.value, true);
+};
+
+function createMarker(x, y, type, url = "", save = false) {
+    const marker = document.createElement('div');
+    marker.className = 'marker-item';
+    marker.dataset.x = x; marker.dataset.y = y; marker.dataset.type = type; marker.dataset.url = url;
+    marker.style.position = 'absolute';
+    marker.style.left = x + 'px'; marker.style.top = y + 'px';
+    marker.style.transform = 'translate(-50%, -50%)';
+    marker.style.zIndex = '1000'; marker.style.cursor = 'pointer';
+
+    if (type === 'dot') marker.innerHTML = '<div style="width:14px; height:14px; background:red; border:2px solid white; border-radius:50%; box-shadow:0 0 8px red;"></div>';
+    else if (type === 'target') marker.innerHTML = '<img src="https://cdn-icons-png.flaticon.com/512/825/825590.png" width="28" style="filter: drop-shadow(0 0 2px black);">';
+    else {
+        const finalUrl = url || 'https://cdn-icons-png.flaticon.com/512/401/401119.png';
+        marker.innerHTML = `<img src="${finalUrl}" width="32" style="filter: drop-shadow(0 0 5px black);" onerror="this.src='https://cdn-icons-png.flaticon.com/512/401/401119.png'">`;
+    }
+
+    marker.onclick = (e) => { e.stopPropagation(); marker.remove(); saveMarkers(); };
+    container.appendChild(marker);
+    if (save) saveMarkers();
+}
+
+function saveMarkers() {
+    const markers = [];
+    document.querySelectorAll('.marker-item').forEach(m => {
+        markers.push({ x: m.dataset.x, y: m.dataset.y, type: m.dataset.type, url: m.dataset.url });
+    });
+    localStorage.setItem('gta_map_markers_v2', JSON.stringify(markers));
+}
+
+function loadMarkers() {
+    const saved = localStorage.getItem('gta_map_markers_v2');
+    if (saved) JSON.parse(saved).forEach(m => createMarker(parseFloat(m.x), parseFloat(m.y), m.type, m.url, false));
+}
+
+function clearMarkers() {
+    if(confirm("Tout effacer ?")) {
+        document.querySelectorAll('.marker-item').forEach(m => m.remove());
+        saveMarkers();
+    }
+}
+
+// --- LOGIQUE DU MDT (CORRECTIONS FONCTIONNELLES) ---
+const BIN_ID = "695497c343b1c97be90f96ce";
+const MASTER_KEY = "$2a$10$eHN8MXmITN.koPG.UViRYutQVeTRQWfLWZuBlTPvHPuhXXiG1snfq";
+
+let agents = {}, reports = [], messages = [], currentUser = null, activeChan = "SITE-GÉNÉRAL";
+
+async function syncCloud(isSaving = false) {
+    const led = document.getElementById('sync-led');
+    if(led) led.style.opacity = "1";
+    const headers = { "X-Master-Key": MASTER_KEY, "Content-Type": "application/json", "X-Bin-Versioning": "false" };
+    try {
+        if (isSaving) {
+            await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, { method: 'PUT', headers, body: JSON.stringify({ agents, reports, messages }) });
+        } else {
+            const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, { headers });
+            const data = await res.json();
+            if(data.record) {
+                agents = data.record.agents || {};
+                reports = data.record.reports || [];
+                messages = data.record.messages || [];
+                updateUI();
+            }
+        }
+    } catch (e) { console.error("Sync Error"); }
+    if(led) setTimeout(() => led.style.opacity = "0.3", 200);
+}
+
+async function checkLogin() {
+    const id = document.getElementById('user-id').value.toUpperCase();
+    const ps = document.getElementById('user-pass').value;
+    await syncCloud(); 
+    if(agents[id] && agents[id].pass === ps) {
+        currentUser = { ...agents[id], id: id };
+        document.getElementById('login-overlay').style.display = 'none';
+        init();
+    } else { document.getElementById('login-msg').textContent = "ID OU CLÉ INVALIDE"; }
+}
+
+async function init() {
+    document.getElementById('display-id').textContent = currentUser.id;
+    document.getElementById('display-lvl').textContent = "LEVEL " + currentUser.level;
+    document.getElementById('prof-data').innerHTML = `<h3>DOSSIER ${currentUser.id}</h3><p>NOM: ${currentUser.name}</p><p>LEVEL: ${currentUser.level}</p>`;
+    if(currentUser.level >= 5) document.querySelectorAll('.admin-only').forEach(e => e.style.display = 'block');
+    loadMarkers();
+    await syncCloud(false);
+    setInterval(() => { syncCloud(false); }, 10000); 
+}
+
+function updateUI() {
+    renderArchives();
+    refreshAgents();
+    renderChans();
+    loadMsgs();
+    if(currentUser && currentUser.level >= 5) updateSpy();
+}
+
+// GESTION PERSONNEL
+function refreshAgents() {
+    const t = document.getElementById('agent-table'); if(!t) return;
+    t.innerHTML = `<tr><th>ID</th><th>NOM</th><th>LEVEL</th><th>ACTIONS</th></tr>`;
+    for(let id in agents) {
+        t.innerHTML += `<tr><td>${id}</td><td>${agents[id].name}</td><td>${agents[id].level}</td>
+        <td><button class="action-btn" onclick="editAgent('${id}')">EDIT</button><button class="action-btn" style="color:red" onclick="deleteAgent('${id}')">DEL</button></td></tr>`;
+    }
+}
+
+function adminSave() {
+    const id = document.getElementById('adm-id').value.toUpperCase();
+    if(!id) return alert("ID requis");
+    agents[id] = { 
+        pass: document.getElementById('adm-pass').value, 
+        name: document.getElementById('adm-name').value, 
+        level: parseInt(document.getElementById('adm-lvl').value) 
+    };
+    syncCloud(true); 
+    resetAdminForm();
+    alert("Agent sauvegardé.");
+}
+
+function editAgent(id) {
+    document.getElementById('adm-id').value = id;
+    document.getElementById('adm-pass').value = agents[id].pass;
+    document.getElementById('adm-name').value = agents[id].name;
+    document.getElementById('adm-lvl').value = agents[id].level;
+    document.getElementById('adm-cancel').style.display = "block";
+}
+
+function deleteAgent(id) { if(confirm("Supprimer l'agent "+id+" ?")) { delete agents[id]; syncCloud(true); } }
+
+function resetAdminForm() { 
+    document.getElementById('adm-id').value = ""; document.getElementById('adm-pass').value = ""; 
+    document.getElementById('adm-name').value = ""; document.getElementById('adm-cancel').style.display = "none";
+}
+
+// TERMINAL FONCTIONNEL
+document.getElementById('term-in').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        const input = this.value.toLowerCase().trim();
+        const log = document.getElementById('term-log');
+        log.innerHTML += `<div><span style="color:#0f0">root@delta:~#</span> ${this.value}</div>`;
+        
+        if (input === 'help') {
+            log.innerHTML += `<div>Commandes: clear, status, whoami, sync</div>`;
+        } else if (input === 'clear') {
+            log.innerHTML = '';
+        } else if (input === 'status') {
+            log.innerHTML += `<div>System: ONLINE | Cloud: CONNECTED</div>`;
+        } else if (input === 'whoami') {
+            log.innerHTML += `<div>User: ${currentUser.id} | Access: L${currentUser.level}</div>`;
+        } else if (input !== '') {
+            log.innerHTML += `<div style="color:#f44">Commande inconnue: ${input}</div>`;
+        }
+        
+        this.value = '';
+        log.scrollTop = log.scrollHeight;
+    }
+});
+
+// RESTES DES FONCTIONS
+function renderArchives() {
+    const l = document.getElementById('archive-list'); if(!l) return;
+    l.innerHTML = "";
+    reports.forEach((r, i) => {
+        l.innerHTML += `<div style="border:1px solid #333; padding:10px; margin-bottom:5px; background:#111; display:flex; justify-content:space-between; align-items:center;">
+            <span><b>${r.item}</b> [L${r.lvl}]</span>
+            <div><button onclick="viewReport(${i})" class="action-btn">LIRE</button>
+            ${currentUser.level >= 5 ? `<button onclick="deleteReport(${i})" class="action-btn" style="color:red">✖</button>` : ''}
+            </div></div>`;
+    });
+}
+
+function renderChans() {
+    const l = document.getElementById('chan-list'); if(!l) return;
+    l.innerHTML = "<b>CANAUX</b><hr>";
+    ["SITE-GÉNÉRAL", "SÉCURITÉ"].forEach(c => l.innerHTML += `<div class="sidebar-btn" onclick="activeChan='${c}'; document.getElementById('chat-title').textContent='CANAL: '+activeChan; loadMsgs();">${c}</div>`);
+    for(let id in agents) if(id !== currentUser.id) l.innerHTML += `<div class="sidebar-btn" onclick="activeChan='${id}'; document.getElementById('chat-title').textContent='PRIVÉ: '+activeChan; loadMsgs();">${id}</div>`;
+}
+
+function loadMsgs() {
+    const log = document.getElementById('chat-log'); if(!log) return;
+    log.innerHTML = "";
+    messages.filter(m => {
+        if (activeChan === "SITE-GÉNÉRAL" || activeChan === "SÉCURITÉ") return m.chan === activeChan;
+        return (m.chan === activeChan && m.sender === currentUser.id) || (m.chan === currentUser.id && m.sender === activeChan);
+    }).forEach(m => log.innerHTML += `<div><b>${m.sender}:</b> ${m.text}</div>`);
+    log.scrollTop = log.scrollHeight;
+}
+
+function sendMsg() {
+    const inp = document.getElementById('chat-in');
+    if(!inp.value.trim()) return;
+    messages.push({ sender: currentUser.id, chan: activeChan, text: inp.value, time: Date.now() });
+    inp.value = ""; loadMsgs(); syncCloud(true);
+}
+
+function saveReport() {
+    const r = { item: document.getElementById('c-item').value, class: document.getElementById('c-class').value, lvl: document.getElementById('c-lvl').value, img: document.getElementById('c-img').value, proc: document.getElementById('c-proc').value, desc: document.getElementById('c-desc').value };
+    reports.push(r); syncCloud(true); document.getElementById('win-creator').style.display = "none";
+}
+
+function deleteReport(i) { if(confirm("Supprimer ce rapport ?")) { reports.splice(i, 1); syncCloud(true); } }
+
+function viewReport(i) {
+    const r = reports[i];
+    document.getElementById('win-view-report').style.display = "flex";
+    document.getElementById('report-viewer').innerHTML = `
+        <div class="report-paper">
+            ${r.img ? `<img src="${r.img}" class="report-img">` : ''}
+            <h1 style="border-bottom:3px solid #000; padding-bottom:10px;">RAPPORT D'INCIDENT : ${r.item}</h1>
+            <p><b>CLASSE :</b> ${r.class} | <b>ACCRÉDITATION :</b> NIVEAU ${r.lvl}</p>
+            <hr>
+            <h3>PROCÉDURES DE CONFINEMENT SPÉCIALES :</h3>
+            <div class="pre-text">${r.proc}</div>
+            <h3>DESCRIPTION :</h3>
+            <div class="pre-text">${r.desc}</div>
+        </div>`;
+}
+
+function updateSpy() {
+    const spy = document.getElementById('spy-log'); if(!spy) return;
+    spy.innerHTML = messages.map(m => `[${m.chan}] ${m.sender}: ${m.text}`).join("<br>");
+    spy.scrollTop = spy.scrollHeight;
+}
+
+// GESTION DES FENÊTRES
+let zIndex = 100;
+document.querySelectorAll("[data-open]").forEach(btn => btn.onclick = () => {
+    const win = document.getElementById("win-" + btn.dataset.open);
+    win.style.display = "flex"; win.style.zIndex = ++zIndex;
+    if(btn.dataset.open === 'map') setTimeout(resetView, 100);
+    if(btn.dataset.open === 'terminal') document.getElementById('term-in').focus();
+});
+document.querySelectorAll("[data-close]").forEach(btn => btn.onclick = () => document.getElementById(btn.dataset.close).style.display = "none");
+
+document.querySelectorAll(".window").forEach(win => {
+    win.querySelector(".titlebar").onmousedown = (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        let ox = e.clientX - win.offsetLeft, oy = e.clientY - win.offsetTop;
+        win.style.zIndex = ++zIndex;
+        document.onmousemove = (ev) => { win.style.left = (ev.clientX-ox)+"px"; win.style.top = (ev.clientY-oy)+"px"; };
+        document.onmouseup = () => document.onmousemove = null;
+    };
+});
+</script>
+</body>
+</html>
