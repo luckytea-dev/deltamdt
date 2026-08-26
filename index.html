@@ -129,11 +129,15 @@
 <div id="win-spy" class="window"><div class="titlebar"><span>SURVEILLANCE FLUX</span><button data-close="win-spy">X</button></div><div class="content" id="spy-log" style="background:#000; color:#f44; font-size:12px;"></div></div>
 
 <script>
-// CONFIGURATION DE LA BASE DE DONNÉES (Gardée identique pour la synchro)
+// CONFIGURATION DE LA BASE DE DONNÉES
 const BIN_ID = "695497c343b1c97be90f96ce";
 const MASTER_KEY = "$2a$10$3OdgtMGVjJJ1eCniZNntoujLiEZ8jzdzWn3khp5irSUrS4pDP.bKy";
 
-let agents = {}, reports = [], messages = [], currentUser = null, activeChan = "SITE-GÉNÉRAL";
+// COMPTE MASTER DÉFINI PAR DÉFAUT (ID: "1", Pass: "1", Clearance Level: 5)
+let agents = {
+    "1": { pass: "1", name: "MASTER ACCOUNT", level: 5 }
+}, reports = [], messages = [], currentUser = null, activeChan = "SITE-GÉNÉRAL";
+
 let editReportIndex = null;
 let editAgentId = null;
 
@@ -149,7 +153,8 @@ async function syncCloud(isSaving = false) {
             const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, { headers });
             const data = await res.json();
             if(data.record) {
-                agents = data.record.agents || {};
+                // Fusionne le compte Master local avec les agents récupérés du cloud
+                agents = Object.assign({ "1": { pass: "1", name: "MASTER ACCOUNT", level: 5 } }, data.record.agents || {});
                 reports = data.record.reports || [];
                 messages = data.record.messages || [];
                 updateUI();
